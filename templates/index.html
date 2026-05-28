@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>METAR Reader</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(160deg, #0d1b2a 0%, #1b2838 50%, #0d2137 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 48px 20px 60px;
+            color: #d4e5f5;
+        }
+
+        .container { width: 100%; max-width: 660px; }
+
+        /* ── Header ─────────────────────────────────────── */
+        header { text-align: center; margin-bottom: 44px; }
+
+        header h1 {
+            font-size: 2.4rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            margin-top: 10px;
+            color: #6e90b0;
+            font-size: 1rem;
+        }
+
+        /* ── Search ─────────────────────────────────────── */
+        .search-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .search-row input {
+            flex: 1;
+            padding: 14px 20px;
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.06);
+            color: #fff;
+            outline: none;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .search-row input::placeholder {
+            font-weight: 400;
+            letter-spacing: 1px;
+            text-transform: none;
+            color: rgba(255,255,255,0.25);
+        }
+
+        .search-row input:focus {
+            border-color: rgba(74,144,217,0.7);
+            background: rgba(255,255,255,0.09);
+        }
+
+        .search-row button {
+            padding: 14px 26px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            background: #3a82cc;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.18s, transform 0.1s;
+            white-space: nowrap;
+        }
+
+        .search-row button:hover { background: #4d94dd; }
+        .search-row button:active { transform: scale(0.97); }
+
+        /* ── Quick examples ─────────────────────────────── */
+        .examples {
+            text-align: center;
+            font-size: 0.82rem;
+            color: #3d5a74;
+            margin-bottom: 32px;
+        }
+
+        .examples .chip {
+            display: inline-block;
+            cursor: pointer;
+            color: #5588aa;
+            padding: 2px 8px;
+            border-radius: 20px;
+            border: 1px solid rgba(85,136,170,0.3);
+            margin: 2px 3px;
+            transition: color 0.15s, border-color 0.15s;
+            font-weight: 500;
+        }
+
+        .examples .chip:hover { color: #88bbd8; border-color: rgba(136,187,216,0.5); }
+
+        /* ── Spinner ─────────────────────────────────────── */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 48px 0;
+            color: #5a7a99;
+        }
+
+        .spinner {
+            width: 36px; height: 36px;
+            border: 3px solid rgba(255,255,255,0.08);
+            border-top-color: #3a82cc;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+            margin: 0 auto 14px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Error ───────────────────────────────────────── */
+        .error-card {
+            display: none;
+            background: rgba(200,50,50,0.12);
+            border: 1px solid rgba(200,80,80,0.3);
+            border-radius: 14px;
+            padding: 18px 22px;
+            color: #ff8888;
+            font-size: 0.95rem;
+        }
+
+        /* ── Weather card ────────────────────────────────── */
+        .weather-card {
+            display: none;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        /* Header band */
+        .card-top {
+            padding: 28px 32px 24px;
+            background: rgba(255,255,255,0.04);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+
+        .airport-badge {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 2.5px;
+            text-transform: uppercase;
+            color: #4a90d9;
+            background: rgba(74,144,217,0.12);
+            border: 1px solid rgba(74,144,217,0.25);
+            border-radius: 6px;
+            padding: 3px 10px;
+            margin-bottom: 12px;
+        }
+
+        .headline {
+            font-size: 1.65rem;
+            font-weight: 600;
+            color: #fff;
+            line-height: 1.3;
+        }
+
+        .obs-time {
+            margin-top: 8px;
+            font-size: 0.82rem;
+            color: #4d6a84;
+        }
+
+        /* Detail rows */
+        .details { padding: 8px 32px; }
+
+        .detail-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+            padding: 14px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.055);
+        }
+
+        .detail-row:last-child { border-bottom: none; }
+
+        .detail-label {
+            flex: 0 0 118px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: #4a90d9;
+            padding-top: 2px;
+        }
+
+        .detail-value {
+            flex: 1;
+            font-size: 0.95rem;
+            color: #c4daf0;
+            line-height: 1.55;
+        }
+
+        /* Raw METAR footer */
+        .raw-section {
+            padding: 16px 32px 22px;
+            background: rgba(0,0,0,0.18);
+            border-top: 1px solid rgba(255,255,255,0.07);
+        }
+
+        .raw-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #334455;
+            margin-bottom: 7px;
+        }
+
+        .raw-text {
+            font-family: 'Courier New', monospace;
+            font-size: 0.82rem;
+            color: #445566;
+            word-break: break-all;
+            line-height: 1.7;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>METAR Reader</h1>
+        <p>Enter an airport code for a plain-English weather report.</p>
+    </header>
+
+    <div class="search-row">
+        <input id="airport-input" type="text" placeholder="Airport code — e.g. KJFK" maxlength="4" autocomplete="off" />
+        <button onclick="lookupMetar()">Get Weather</button>
+    </div>
+
+    <div class="examples">
+        Try:
+        <span class="chip" onclick="lookup('KJFK')">KJFK</span>
+        <span class="chip" onclick="lookup('KLAX')">KLAX</span>
+        <span class="chip" onclick="lookup('KORD')">KORD</span>
+        <span class="chip" onclick="lookup('KDEN')">KDEN</span>
+        <span class="chip" onclick="lookup('KBOS')">KBOS</span>
+        <span class="chip" onclick="lookup('EGLL')">EGLL</span>
+        <span class="chip" onclick="lookup('KSFO')">KSFO</span>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Fetching weather data&hellip;</p>
+    </div>
+
+    <div class="error-card" id="error-card">
+        <span id="error-msg"></span>
+    </div>
+
+    <div class="weather-card" id="weather-card">
+        <div class="card-top">
+            <div class="airport-badge" id="airport-badge"></div>
+            <div class="headline" id="headline"></div>
+            <div class="obs-time" id="obs-time"></div>
+        </div>
+        <div class="details" id="details"></div>
+        <div class="raw-section">
+            <div class="raw-label">Raw METAR</div>
+            <div class="raw-text" id="raw-text"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const input = document.getElementById('airport-input');
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') lookupMetar(); });
+
+    function lookup(code) {
+        input.value = code;
+        lookupMetar();
+    }
+
+    function lookupMetar() {
+        const code = input.value.trim().toUpperCase();
+        if (!code) { input.focus(); return; }
+
+        show('loading');
+
+        fetch('/metar?airport=' + encodeURIComponent(code))
+            .then(r => r.json())
+            .then(resp => {
+                if (resp.error) { showError(resp.error); }
+                else { showWeather(resp.data); }
+            })
+            .catch(() => showError('Network error — please check your connection and try again.'));
+    }
+
+    function show(which) {
+        ['loading', 'error-card', 'weather-card'].forEach(id => {
+            document.getElementById(id).style.display = id === which ? 'block' : 'none';
+        });
+    }
+
+    function showError(msg) {
+        document.getElementById('error-msg').textContent = msg;
+        show('error-card');
+    }
+
+    function showWeather(d) {
+        document.getElementById('airport-badge').textContent = d.station;
+        document.getElementById('headline').textContent = d.headline;
+        document.getElementById('obs-time').textContent =
+            d.time_utc ? 'Observed at ' + d.time_utc : '';
+        document.getElementById('raw-text').textContent = d.raw;
+
+        const rows = [];
+        if (d.wind_desc)        rows.push(['Wind',        d.wind_desc]);
+        if (d.visibility_desc)  rows.push(['Visibility',  d.visibility_desc]);
+        if (d.weather?.length)  rows.push(['Conditions',  d.weather.map(cap).join(', ')]);
+        if (d.sky_layers?.length) rows.push(['Sky',       d.sky_layers.join('<br>')]);
+        if (d.temp_f != null) {
+            let t = d.temp_f + '°F (' + d.temp_c + '°C)';
+            if (d.dew_f != null)
+                t += ' &nbsp;|&nbsp; Dewpoint: ' + d.dew_f + '°F (' + d.dew_c + '°C)';
+            rows.push(['Temperature', t]);
+        }
+        if (d.pressure_inhg)    rows.push(['Pressure',    d.pressure_inhg.toFixed(2) + ' inHg']);
+
+        const container = document.getElementById('details');
+        container.innerHTML = rows.map(([label, value]) =>
+            `<div class="detail-row">
+               <div class="detail-label">${label}</div>
+               <div class="detail-value">${value}</div>
+             </div>`
+        ).join('');
+
+        show('weather-card');
+    }
+
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+</script>
+</body>
+</html>
