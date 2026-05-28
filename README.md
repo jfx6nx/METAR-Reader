@@ -1,0 +1,1 @@
+The application takes in METAR readings sent to pilots flying to/near airports and then interprets them as a human-readable weather report. The project was done as an entry exercise to using Claude Code.
